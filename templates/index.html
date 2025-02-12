@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Classification</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="text-center">Flask Image Classification</h2>
+        
+        <!-- Upload Form -->
+        <div class="mb-4">
+            <h4>Upload Image</h4>
+            <form id="upload-form" enctype="multipart/form-data">
+                <input type="file" id="imageInput" name="file" class="form-control mb-2" required>
+                <input type="text" id="labelInput" name="label" class="form-control mb-2" placeholder="Enter Class Label" required>
+                <button type="submit" class="btn btn-primary">Upload</button>
+            </form>
+            <p id="upload-status" class="mt-2"></p>
+        </div>
+        
+        <!-- Train Model Button -->
+        <div class="mb-4">
+            <h4>Train Model</h4>
+            <button id="train-button" class="btn btn-success">Start Training</button>
+            <p id="train-status" class="mt-2"></p>
+        </div>
+
+        <!-- Redirect to Prediction -->
+        <div class="mb-4" id="predict-section" style="display: none;">
+            <h4>Already Trained?</h4>
+            <a href="{{ url_for('predict_page') }}" class="btn btn-warning">Go to Prediction</a>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('upload-form').onsubmit = async function(event) {
+            event.preventDefault();
+            let formData = new FormData(this);
+            let response = await fetch('/upload', { method: 'POST', body: formData });
+            let result = await response.json();
+            document.getElementById('upload-status').innerText = result.message;
+            checkPredictAvailability();
+        };
+
+        document.getElementById('train-button').onclick = async function() {
+            document.getElementById('train-status').innerText = "Training started...";
+            let response = await fetch('/train', { method: 'POST' });
+            let result = await response.json();
+            document.getElementById('train-status').innerText = "Training complete!";
+            checkPredictAvailability();
+
+            // Show confirmation popup
+            if (result.message === "Training complete") {
+                setTimeout(() => {
+                    if (confirm("Training is complete! Do you want to go to the prediction page?")) {
+                        window.location.href = "{{ url_for('predict_page') }}";
+                    }
+                }, 500);
+            }
+        };
+
+        async function checkPredictAvailability() {
+            let response = await fetch('/check_model_status');
+            let result = await response.json();
+            if (result.ready) {
+                document.getElementById('predict-section').style.display = 'block';
+            }
+        }
+
+        window.onload = checkPredictAvailability;
+    </script>
+</body>
+</html>
