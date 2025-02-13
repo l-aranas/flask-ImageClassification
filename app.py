@@ -7,7 +7,7 @@ from datetime import datetime
 from werkzeug.utils import secure_filename
 from tensorflow.keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras.models import load_model, Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras import Input
 from sklearn.model_selection import train_test_split
 
@@ -56,17 +56,26 @@ def load_data():
 def create_model(num_classes):
     model = Sequential([
         Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)),
+
         Conv2D(32, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
+        Dropout(0.25),  # Dropout after first conv block
+
         Conv2D(64, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
+        Dropout(0.25),  # Dropout after second conv block
+
         Conv2D(128, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
+        Dropout(0.5),  # Stronger dropout after deeper layers
+
         Flatten(),
-        Dense(128, activation='relu'),
+        Dense(256, activation='relu'),
+        Dropout(0.5),  # Dropout before final classification layer
+
         Dense(num_classes, activation='softmax')
     ])
-    
+
     model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
     return model
 
@@ -163,12 +172,6 @@ def predict_image():
     
     predicted_class = class_names[class_index]
     return jsonify({'prediction': predicted_class})
-
-@app.route('/all_images')
-def all_images():
-    """Return all uploaded images."""
-    images = [img for img in os.listdir(UPLOAD_FOLDER) if img.endswith(('.jpg', '.jpeg', '.png'))]
-    return jsonify({'images': images})
 
 if __name__ == '__main__':
     app.run(debug=True)
