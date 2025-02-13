@@ -8,6 +8,7 @@ from werkzeug.utils import secure_filename
 from tensorflow.keras.preprocessing.image import load_img, img_to_array
 from tensorflow.keras.models import load_model, Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
+from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import Input
 from sklearn.model_selection import train_test_split
 
@@ -55,30 +56,23 @@ def load_data():
 
 def create_model(num_classes):
     model = Sequential([
-    Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)),
+        Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)),
 
-    Conv2D(16, (3, 3), activation='relu'),  # Reduced filters
-    MaxPooling2D((2, 2)),
-    Dropout(0.25),
+        Conv2D(16, (3, 3), activation='relu'),
+        MaxPooling2D((2, 2)),
 
-    Conv2D(32, (3, 3), activation='relu'),  # Reduced filters
-    MaxPooling2D((2, 2)),
-    Dropout(0.25),
-    
-    Conv2D(64, (3, 3), activation='relu'),  # Reduced filters
-    MaxPooling2D((2, 2)),
-    Dropout(0.25),
+        Conv2D(32, (3, 3), activation='relu'),
+        MaxPooling2D((2, 2)),
 
-    Flatten(),
-    Dense(128, activation='relu'),  # Reduced neurons
-    Dropout(0.5),
+        Flatten(),
+        Dense(64, activation='relu'),
+        Dropout(0.5),
+        
+        Dense(num_classes, activation='softmax')
+    ])
 
-    Dense(num_classes, activation='softmax')
-])
-
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     return model
-
 
 @app.route('/')
 def home():
@@ -120,10 +114,13 @@ def train():
     if image_data is None or len(class_names) < 2:
         return jsonify({'message': 'Not enough data to train'}), 400
 
+    # One-hot encode labels
+    labels = to_categorical(labels, num_classes=len(class_names))
+
     X_train, X_val, y_train, y_val = train_test_split(image_data, labels, test_size=0.2, random_state=42)
 
     model = create_model(len(class_names))
-    
+
     for epoch in range(50):
         model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=1, batch_size=32, verbose=1)
         progress = int((epoch + 1) / 50 * 100)
@@ -137,7 +134,7 @@ def train():
 def predict_page():
     """Render the prediction page with uploaded images."""
     images = sorted(
-        [img for img in os.listdir(UPLOAD_FOLDER) if img.endswith(('.jpg', '.jpeg', '.png'))],
+        [img for img in os.listdir(UPLOAD_FOLDER) if img.endswith(('.jpg', '.jpeg', '.png', '.JPG'))],
         key=lambda x: os.path.getctime(os.path.join(UPLOAD_FOLDER, x)),
         reverse=True
     )
@@ -149,29 +146,38 @@ def predict_image():
     filename = request.args.get('filename')
     if not filename:
         return jsonify({'error': 'No filename provided'})
-    
+
     file_path = os.path.join(UPLOAD_FOLDER, filename)
     if not os.path.exists(file_path):
         return jsonify({'error': 'File not found'})
-    
+
     if model is None:
-        model = load_trained_model()
-        if model is None:
-            return jsonify({'error': 'Model not trained'})
-    
+        return jsonify({'error': 'Model not loaded'})
+
+    # Load & preprocess image (optimize)
     img = load_img(file_path, target_size=IMAGE_SIZE)
     img_array = img_to_array(img) / 255.0
     img_array = np.expand_dims(img_array, axis=0)
-    
+
+    # Measure prediction time
+    import time
+    start_time = time.time()
     prediction = model.predict(img_array)
+    end_time = time.time()
+
     class_index = np.argmax(prediction)
-    
     _, _, class_names = load_data()
     if not class_names:
         return jsonify({'error': 'Class names not found'})
-    
+
     predicted_class = class_names[class_index]
-    return jsonify({'prediction': predicted_class})
+    confidence = float(np.max(prediction))
+
+    return jsonify({
+        'prediction': predicted_class,
+        'confidence': confidence,
+        'time_taken': round(end_time - start_time, 3)  # Debugging: show prediction time
+    })
 
 if __name__ == '__main__':
     app.run(debug=True)
