@@ -10,6 +10,7 @@ from tensorflow.keras.models import load_model, Sequential
 from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras import Input
+from tensorflow.keras.callbacks import EarlyStopping
 from sklearn.model_selection import train_test_split
 
 app = Flask(__name__)
@@ -58,14 +59,17 @@ def create_model(num_classes):
     model = Sequential([
         Input(shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)),
 
-        Conv2D(16, (3, 3), activation='relu'),
-        MaxPooling2D((2, 2)),
-
         Conv2D(32, (3, 3), activation='relu'),
+        MaxPooling2D((2, 2)),
+        
+        Conv2D(64, (3, 3), activation='relu'),
+        MaxPooling2D((2, 2)),
+        
+        Conv2D(128, (3, 3), activation='relu'),
         MaxPooling2D((2, 2)),
 
         Flatten(),
-        Dense(64, activation='relu'),
+        Dense(96, activation='relu'),
         Dropout(0.5),
         
         Dense(num_classes, activation='softmax')
@@ -121,12 +125,28 @@ def train():
 
     model = create_model(len(class_names))
 
-    for epoch in range(50):
-        model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=1, batch_size=32, verbose=1)
-        progress = int((epoch + 1) / 50 * 100)
+    # Define EarlyStopping callback
+    early_stopping = EarlyStopping(
+    monitor='val_accuracy',
+    mode='max',
+    patience=50,  # Wait for 50 epochs before stopping
+    verbose=1,
+    min_delta=0.001,  # Allow smaller improvements
+    restore_best_weights=True
+)
+
+    # Train the model
+    history = model.fit(
+        X_train, y_train,
+        validation_data=(X_val, y_val),
+        epochs=100,
+        batch_size=32,
+        verbose=1,
+        callbacks=[early_stopping]  # Apply early stopping
+    )
 
     model.save(MODEL_PATH)
-    progress = 100
+    progress = 100  # Mark progress as complete
 
     return jsonify({'message': 'Training complete'})
 
